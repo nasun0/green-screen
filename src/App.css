@@ -50,4 +50,5 @@ input {
 
 tspan {
   fill: #eeeeee !important;
+  font-weight: lighter !important;
 }

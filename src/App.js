@@ -11,7 +11,7 @@ import InputLabel from '@mui/material/InputLabel';
 import FormControl from '@mui/material/FormControl';
 import Divider from '@mui/material/Divider';
 import { motion, AnimatePresence, AnimateSharedLayout } from "framer-motion";
-import { PolarRadiusAxis, LineChart, Line, YAxis, PieChart, Pie, RadarChart, Radar, PolarGrid, PolarAngleAxis } from 'recharts';
+import { Cell, PolarRadiusAxis, LineChart, Line, YAxis, PieChart, Pie, RadarChart, Radar, PolarGrid, PolarAngleAxis } from 'recharts';
 import Button from '@mui/material/Button';
 import ButtonGroup from '@mui/material/ButtonGroup';
 import TextField from '@mui/material/TextField';
@@ -93,7 +93,7 @@ function DetailedView(props) {
       url += '&token=c5cau7aad3ib55bb0h20';
       if (does_fetch)
         fetch(url).then(response => response.json()).then(data => setData(data["c"].map(x => ({value: x}))))
-          .catch(error => alert("fetch error, please check if symbol is correct, but rate limit can also be passed"));
+          .catch(error => console.error("fetch error, please check if symbol is correct, but rate limit can also be passed"));
     }
   }, [time, props.symbol, data]);
   const remove = props.removeStock;
@@ -199,6 +199,7 @@ function Header(props) {
         <img src={logo} alt={"logo"} width="100px" style={{
           margin: 32,
         }} onClick={() => props.changeScreen(false)} />
+        {(props.state === "atHome" || props.state === "transitionToHome") && <span style={{position: 'absolute', left: 590, fontSize: 50, fontWeight: 'lighter'}}>Your Portfolio</span>}
         <SearchTagInput searchTags={props.searchTags} setSearchTags={props.setSearchTags} state={props.state}/>
         <img src={rocket} alt={"rocket"} width="100px" style={{
           margin: 32
@@ -291,7 +292,7 @@ function HomeScreen() {
   const [unprocessedCompanies, setUnprocessedCompanies] = useState(new Set(
     // ["GS", "AAPL", "SBUX", "NKE", "TMUX", "AMZN", "FB", "GOOGL"]
   ));
-  let pieChartData = [{value: 0, name: 'Environment'}, {value: 0, name: 'Social'}, {value: 0, name: 'Governance'}, {value: 0, name: 'None'}];
+  let pieChartData = [{value: 0, name: 'Environmental'}, {value: 0, name: 'Social'}, {value: 0, name: 'Governance'}, {value: 0, name: 'None'}];
   let radarChartData = [{type: 'Environmental', value: 0}, {type: 'Social', value: 0}, {type: 'Governance', value: 0}];
   let totalData = 0;
   for (let company of portfolio) {
@@ -338,9 +339,14 @@ function HomeScreen() {
         <h1 style={{margin: 0, marginBottom: 30, fontWeight: 'lighter'}}>${numberWithCommas(totalWorth)}</h1>
         <div style={{display: 'flex', flexDirection: 'row'}}>
           <PieChart width={460} height={250}>
-            <Pie data={pieChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={50} fill="#8884d8" label={entry => entry.name}/>
+            <Pie stroke="none" data={pieChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={50} fill="#8884d8" label={entry => entry.name}>
+              <Cell fill="#75d8ff" />
+              <Cell fill="#ffd859" />
+              <Cell fill="#b06bff" />
+              <Cell fill="#666666" />
+            </Pie>
           </PieChart>
-          <RadarChart outerRadius={90} width={460} height={250} data={radarChartData}>
+          <RadarChart outerRadius={90} width={460} height={250} data={radarChartData} style={{marginTop: 25}}>
             <PolarGrid />
             <PolarAngleAxis dataKey="type"/>
             <PolarRadiusAxis style={{display: 'none'}} angle={120} domain={[0, 33]} />
@@ -391,7 +397,7 @@ function ExploreStock(props) {
             props.setUnprocessedCompanies(props.unprocessedCompanies);
             props.setTotalWorth(props.totalWorth + data["c"][data["c"].length - 1] * props.numStocks);
           }
-        }).catch(error => alert(error + "fetch error, please check if symbol is correct, but rate limit can also be passed"));
+        }).catch(error => console.error(error + "fetch error, please check if symbol is correct, but rate limit can also be passed"));
     }
   });
   const symbol = props.symbol;
