@@ -16,28 +16,27 @@ import Button from '@mui/material/Button';
 import ButtonGroup from '@mui/material/ButtonGroup';
 import TextField from '@mui/material/TextField';
 import companies from './assets/companies';
+import TagsInput from './TagsInput';
 import './App.css';
 
-const categories = ["Environmental", "Social", "Governance"];
-const categoryColorMap = {"Environmental": "#75d8ff", "Social": "#ffd859", "Governance": "#b06bff",
-  "E": "#75d8ff", "S": "#ffd859", "G": "#b06bff"};
-const env_threshold = 28;
-const soc_threshold = 25;
-const gov_threshold = 26;
-const does_fetch = true;
+const author = "Jimmy Ding";
 
-function setColor(p){
-  if (p < 0)
-    return "rgb(255, 0, 0)";
-  if (p > 100)
-    return "rgb(0, 255, 0)";
-  var red = p<50 ? 255 : Math.round(256 - (p-50)*5.12);
-  var green = p>50 ? 255 : Math.round((p)*5.12);
-  return "rgb(" + red + "," + green + ",0)";
+const colors = ["#ed9755", "#b06bff", "#d164bd", "#75d8ff", "#ffd859"];
+let colorMap = {};
+let idx = 0;
+const does_fetch = true;
+let comment_map = {};
+
+function getColor(category) {
+  if (!(category in colorMap)) {
+    idx = (idx + 1) % colors.length;
+    colorMap[category] = colors[idx];
+  }
+  return colorMap[category];
 }
 
 function numberWithCommas(x) {
-  return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return x.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 function Backdrop(props) {
@@ -52,7 +51,7 @@ function Backdrop(props) {
   return (
     <AnimatePresence exitBeforeEnter>
       {props.showBackdrop && (<motion.div variances={variance} initial="hidden" animate="visible" style={{
-        position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 3, backgroundColor: '#000000c0'
+        position: 'fixed', top: 0, left: 0, width: '100%', height: '1000vh', zIndex: 3, backgroundColor: '#000000d8'
       }} onClick={() => props.leaveDetailed()}/>)}
     </AnimatePresence>
   );
@@ -61,8 +60,14 @@ function Backdrop(props) {
 function DetailedView(props) {
   const {width, height} = useWindowDimensions();
   const [data, setData] = useState([]);
-  const color = data.length > 0 && data[0].value >= data[data.length - 1].value ? 'red' : 'green';
+  const color = data.length > 0 && data[0].value >= data[data.length - 1].value ? '#ff2222' : 'lime';
   const [time, setTime] = useState("1W");
+  const [news, setNews] = useState([]);
+  const [price, setPrice] = useState(0);
+  const [dayChange, setDayChange] = useState(0);
+  const [comments, setComments] = useState(props.symbol in comment_map ? comment_map[props.symbol] : []);
+  const [writtenPost, setWrittenPost] = useState("");
+  const [stats, setStats] = useState({});
   useEffect(() => {
     if (data && data.length === 0) {
       let url = 'https://finnhub.io/api/v1/stock/candle?symbol=';
@@ -91,27 +96,37 @@ function DetailedView(props) {
       url += '&to=';
       url += newTime;
       url += '&token=c5cau7aad3ib55bb0h20';
-      if (does_fetch)
-        fetch(url).then(response => response.json()).then(data => setData(data["c"].map(x => ({value: x}))))
-          .catch(error => console.error("fetch error, please check if symbol is correct, but rate limit can also be passed"));
+      if (does_fetch) {
+        fetch("http://127.0.0.1:5000/get_stats/" + props.symbol).then(response => response.json()).then(data => setStats(data));
+        fetch(url).then(response => response.json()).then(data => {
+          setData(data["c"].map(x => ({value: x})));
+          setPrice(data["c"][data["c"].length - 1]);
+          setDayChange(Math.round(data["c"][data["c"].length - 1] * 100 - data["c"][0] * 100) / 100);
+        }).catch(error => console.error("fetch error, please check if symbol is correct, but rate limit can also be passed"));
+        fetch("http://127.0.0.1:5000/get_news/" + props.symbol).then(response => response.json()).then(data => setNews(data));
+      }
     }
   }, [time, props.symbol, data]);
   const remove = props.removeStock;
 
   return (
     <>
-      <div style={{position: 'fixed', width: 800, height: 600, left: (width - 800) / 2, top: (height - 600 - 164) / 2, display: 'flex', flexDirection: 'column', zIndex: 4}}>
+      <div style={{position: 'absolute', width: 800, height: 600, left: (width - 800) / 2, top: -120, display: 'flex', flexDirection: 'column', zIndex: 4}}>
+        <div style={{position: 'absolute', right: -5, top: 15, width: 160, display: 'flex', flexDirection: 'column'}}>
+          <motion.span style={{fontSize: 42, fontWeight: 'bold', textAlign: 'right'}}>{price.toFixed(2)}</motion.span>
+          <motion.span style={{fontSize: 32, borderRadius: 6, alignSelf: 'center', textAlign: 'right', width: '80%', padding: 4, borderWidth: 1, borderColor: dayChange >= 0 ? 'lime' : '#ff2222', borderStyle: 'solid', color: dayChange >= 0 ? 'lime' : '#ff2222', marginLeft: 8, marginTop: 8, marginBottom: 6}}>{dayChange >= 0 ? '+' : ''}{dayChange.toFixed(2)}</motion.span>
+        </div>
         {remove && <div style={{
-          position: 'absolute', right: -5, top: 15
+          position: 'absolute', left: 7, top: 160
         }} onClick={() => remove(props.symbol)}>
           <img src={trash} width="45px" alt="Trash can"/>
         </div>}
         <div style={{display: 'flex', flexDirection: 'row'}}>
           <motion.span layoutId={props.symbol + "_symbol"} style={{fontSize: 80, fontWeight: 'bold', color: '#eeeeee'}}>{props.symbol}</motion.span>
-          {props.numStocks !== -1 && <span style={{marginTop: 16, marginLeft: 15}}>{props.numStocks}<br/>Shares</span>}
+          <span style={{marginTop: 16, marginLeft: 15}}>{props.numStocks === -1 ? 0 : props.numStocks}<br/>Shares</span>
         </div>
         <motion.span layoutId={props.symbol + "_name"} style={{fontSize: 35, color: '#aaaaaa'}}>{props.name}</motion.span>
-        <ButtonGroup variant="outlined" style={{marginTop: 40, marginLeft: 110}}>
+        <ButtonGroup variant="outlined" style={{marginTop: 40, marginLeft: 140}}>
           <Button onClick={() => {setTime("1W");setData([])}}>1W</Button>
           <Button onClick={() => {setTime("1M");setData([])}}>1M</Button>
           <Button onClick={() => {setTime("3M");setData([])}}>3M</Button>
@@ -126,12 +141,64 @@ function DetailedView(props) {
             </LineChart>
           ) : <div style={{width: 800, height: 250}} />}
         </motion.div>
-        <RadarChart style={{marginLeft: 200}} outerRadius={90} width={460} height={250} data={[{type: 'Environmental', value: props.env_v}, {type: 'Social', value: props.soc_v}, {type: 'Governance', value: props.gov_v}]}>
-          <PolarGrid />
-          <PolarAngleAxis dataKey="type"/>
-          <PolarRadiusAxis style={{display: 'none'}} angle={120} domain={[0, 33]} />
-          <Radar name="Average ESG" dataKey="value" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
-        </RadarChart>
+        <AnimatePresence>
+          {Object.keys(stats).length !== 0 && (
+            <motion.div style={{fontSize: 20, width: 800, marginTop: 40, display: 'flex', flexDirection: 'row', justifyContent: 'space-between'}}>
+              <div style={{display: 'flex', flexDirection: 'column'}}>
+                {'volume' in stats && (<span style={{marginBottom: 16}}>10 week average volume: <span style={{marginLeft: 4, fontWeight: 'normal', color: '#aaaaaa'}}>{stats['volume'].toFixed(2)}</span></span>)}
+                {'high' in stats && (<span style={{marginBottom: 16}}>52 week high: <span style={{marginLeft: 4, fontWeight: 'normal', color: '#aaaaaa'}}>{stats['high'].toFixed(2)}</span></span>)}
+                {'low' in stats && (<span style={{marginBottom: 16}}>52 week low: <span style={{marginLeft: 4, fontWeight: 'normal', color: '#aaaaaa'}}>{stats['low'].toFixed(2)}</span></span>)}
+              </div>
+              <div style={{display: 'flex', flexDirection: 'column'}}>
+                {'price_return_daily' in stats && (<span style={{marginBottom: 16}}>52 week price return daily: <span style={{marginLeft: 4, fontWeight: 'normal', color: '#aaaaaa'}}>{stats['price_return_daily'].toFixed(2)}</span></span>)}
+                {'beta' in stats && (<span style={{marginBottom: 16}}>beta: <span style={{marginLeft: 4, fontWeight: 'normal', color: '#aaaaaa'}}>{stats['beta'].toFixed(2)}</span></span>)}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <div style={{width: 800, marginTop: 60, display: 'flex', flexDirection: 'column'}}>
+          <TextField multiline rows={4} maxRows={4} value={writtenPost} onChange={event => {
+            setWrittenPost(event.target.value);
+          }} label="Write Comment" placeholder="Write a comment to share with the world" fullWidth/>
+          <Button variant='outlined' style={{alignSelf: 'flex-start', marginTop: 10, marginBottom: 48}} onClick={() => {
+            setComments(comments.concat([[writtenPost, author, new Date()]]));
+            comment_map[props.symbol] = comments.concat([[writtenPost, author, new Date()]]);
+            setWrittenPost("");
+          }}>Post</Button>
+        </div>
+        <Divider width="800"/>
+        <div style={{display: 'flex', flexDirection: 'column'}}>
+          {comments.map(comment => (
+            <>
+              <div style={{display: 'flex', margin: 45, marginBottom: 10, color: '#cccccc', fontWeight: 'bold', fontFamily: 'Caviar Dreams', fontSize: 22}}>
+                <span>{comment[1]}</span>
+                <span style={{marginLeft: 20, fontSize: 18, alignSelf: 'center', color: '#666666'}}>Today at {comment[2].toLocaleTimeString()}</span>
+              </div>
+              <span style={{margin: 45, marginTop: 0, width: 710, fontFamily: 'Caviar Dreams'}}>{comment[0]}</span>
+              <Divider width="800"/>
+            </>
+          ))}
+        </div>
+        <div>
+          {news.map(news_elem => (
+            <div key={news_elem['url']} style={{display: 'flex', flexDirection: 'row', marginTop: 50}}>
+              {(news.indexOf(news_elem) % 2 === 0) ? (
+                <motion.div style={{backgroundImage: 'url(' + news_elem['image'] + ')', minWidth: 350, width: 350, height: 260, backgroundPosition: 'center', }}/>
+              ) : (
+                <a href={news_elem['url']} style={{fontSize: 40, fontWeight: 'bold', textAlign: 'left', alignSelf: 'center'}}>
+                  <span style={{color: 'white', textDecorationStyle: ''}}>{news_elem['headline']}</span>
+                </a>
+              )}
+              {(news.indexOf(news_elem) % 2 === 0) ? (
+                <a href={news_elem['url']} style={{fontSize: 40, fontWeight: 'bold', textAlign: 'right', alignSelf: 'center'}}>
+                  <span style={{color: 'white', textDecorationStyle: ''}}>{news_elem['headline']}</span>
+                </a>
+              ) : (
+                <motion.div style={{backgroundImage: 'url(' + news_elem['image'] + ')', minWidth: 350, width: 350, height: 260, backgroundPosition: 'center', }}/>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </>
   )
@@ -167,27 +234,14 @@ function SearchTagInput(props) {
   return (
     <motion.div variants={variant} initial={{opacity: 0}}>
       <FormControl sx={{ m: 1, width: 400 }} style={{marginLeft: 16}}>
-        <InputLabel id="select-label-id" style={{color: '#eeeeee'}}>Categories</InputLabel>
-        <Select
-          labelId="select-label-id"
-          multiple
-          value={props.searchTags}
-          onChange={(event) => props.setSearchTags(typeof event.target.value === 'string' ? event.target.value.split(',') : event.target.value)}
-          input={<OutlinedInput id="select-multiple-chip" label="Categories" />}
-          renderValue={(selected) => (
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-              {selected.map((value) => (
-                <Chip key={value} label={value} style={{color: categoryColorMap[value], backgroundColor: categoryColorMap[value] + '30'}}/>
-              ))}
-            </Box>
-          )}
-        >
-          {categories.map((category) => (
-            <MenuItem key={category} value={category}>
-              {category}
-            </MenuItem>
-          ))}
-        </Select>
+        <TagsInput 
+          selectedTags={items => props.setSearchTags(items)}
+          fullWidth
+          variant='outlined'
+          placeholder={props.searchTags.length === 0 ? "Input keywords or categories" : ""}
+          label="Search"
+          getColorFn={getColor}
+        />
       </FormControl>
     </motion.div>
   );
@@ -196,13 +250,15 @@ function SearchTagInput(props) {
 function Header(props) {
   return (
     <div style={{marginLeft: 300, marginRight: 300, display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-        <img src={logo} alt={"logo"} width="100px" style={{
+        <img src={logo} alt={"logo"} width="90px" style={{
           margin: 32,
+          marginRight: 0,
         }} onClick={() => props.changeScreen(false)} />
-        {(props.state === "atHome" || props.state === "transitionToHome") && <span style={{position: 'absolute', left: 590, fontSize: 50, fontWeight: 'lighter'}}>Your Portfolio</span>}
+        {(props.state === "atHome" || props.state === "transitionToHome") && <span style={{position: 'absolute', left: 515, fontSize: 80, fontWeight: 'lighter', color: 'white'}}>Your Portfolio</span>}
         <SearchTagInput searchTags={props.searchTags} setSearchTags={props.setSearchTags} state={props.state}/>
-        <img src={rocket} alt={"rocket"} width="100px" style={{
-          margin: 32
+        <img src={rocket} alt={"rocket"} width="90px" style={{
+          margin: 32,
+          marginLeft: 0,
         }} onClick={() => props.changeScreen(true)}/>
     </div>
   );
@@ -235,41 +291,38 @@ function Portfolio(props) {
   const {width} = useWindowDimensions();
   const [detailed, setDetailed] = useState("");
   const [name, setName] = useState("");
-  const [env_v, setEnv_v] = useState(-1);
-  const [soc_v, setSoc_v] = useState(-1);
-  const [gov_v, setGov_v] = useState(-1);
+  const [relevance, setRelevance] = useState([]);
   const [amount, setAmount] = useState(-1);
-  function handleDetailView(symbol, name, env_v, soc_v, gov_v, amt) {
+  function handleDetailView(symbol, name, relevance, amt) {
     setDetailed(symbol);
     setName(name);
-    setEnv_v(env_v);
-    setSoc_v(soc_v);
-    setGov_v(gov_v);
+    setRelevance(relevance);
     setAmount(amt);
   }
   return (
     <div style={{
-      paddingLeft: 340,
+      paddingLeft: 370,
       textAlign: 'left',
       color: '#eeeeee',
       display: 'flex',
       flexDirection: 'column',
-      backgroundColor: '#222222',
-      width: width - 340
+      backgroundColor: '#111111',
+      width: width - 370
     }}>
       <AnimateSharedLayout>
         {props.portfolio.map(suggestion => (
-          <ExploreStock key={suggestion.symbol} symbol={suggestion.symbol} name={companies[suggestion.symbol][0]} time={"1W"} env_v={companies[suggestion.symbol][1][1]} soc_v={companies[suggestion.symbol][1][2]} gov_v={companies[suggestion.symbol][1][3]} handleDetailView={handleDetailView} numStocks={suggestion.amount} unprocessedCompanies={props.unprocessedCompanies} totalWorth={props.totalWorth} setTotalWorth={props.setTotalWorth} setUnprocessedCompanies={props.setUnprocessedCompanies}/>
+          <ExploreStock key={suggestion.symbol} symbol={suggestion.symbol} name={companies[suggestion.symbol][0]} time={"1W"} relevance={[]} handleDetailView={handleDetailView} numStocks={suggestion.amount} unprocessedCompanies={props.unprocessedCompanies} totalWorth={props.totalWorth} setTotalWorth={props.setTotalWorth} setUnprocessedCompanies={props.setUnprocessedCompanies} searchTags={[]}/>
         ))}
         <Backdrop showBackdrop={detailed !== ""} leaveDetailed={() => setDetailed("")}/>
-        {detailed !== "" && <DetailedView symbol={detailed} name={name} env_v={env_v} soc_v={soc_v} gov_v={gov_v} removeStock={symbol => {
+        {detailed !== "" && <DetailedView symbol={detailed} name={name} relevance={relevance} numStocks={amount} removeStock={symbol => {
           let index;
           for (let idx = 0; idx < props.portfolio.length; idx++)
             if (props.portfolio[idx].symbol === symbol)
               index = idx;
           props.setPortfolio(props.portfolio.slice(0, index).concat(props.portfolio.slice(index + 1)));
+          props.setTotalWorth(props.totalWorth - 118.24);
           setDetailed("");
-        }} numStocks={amount}/>}
+        }}/>}
         <AddStock setPortfolio={props.setPortfolio} portfolio={props.portfolio} unprocessedCompanies={props.unprocessedCompanies} setUnprocessedCompanies={props.setUnprocessedCompanies}/>
       </AnimateSharedLayout>
     </div>
@@ -292,38 +345,6 @@ function HomeScreen() {
   const [unprocessedCompanies, setUnprocessedCompanies] = useState(new Set(
     // ["GS", "AAPL", "SBUX", "NKE", "TMUX", "AMZN", "FB", "GOOGL"]
   ));
-  let pieChartData = [{value: 0, name: 'Environmental'}, {value: 0, name: 'Social'}, {value: 0, name: 'Governance'}, {value: 0, name: 'None'}];
-  let radarChartData = [{type: 'Environmental', value: 0}, {type: 'Social', value: 0}, {type: 'Governance', value: 0}];
-  let totalData = 0;
-  for (let company of portfolio) {
-    const env_v = companies[company.symbol][1][1];
-    const soc_v = companies[company.symbol][1][2];
-    const gov_v = companies[company.symbol][1][3];
-    radarChartData[0].value += env_v;
-    radarChartData[1].value += soc_v;
-    radarChartData[2].value += gov_v;
-    totalData++;
-    if (env_v < env_threshold && soc_v < soc_threshold && gov_v < gov_threshold) {
-      pieChartData[3].value++;
-    } else {
-      let highest = [env_v, soc_v, gov_v].sort()[2];
-      if (highest === env_v)
-        pieChartData[0].value++;
-      else if (highest === soc_v)
-        pieChartData[1].value++;
-      else if (highest === gov_v)
-        pieChartData[2].value++;
-    }
-  }
-  pieChartData[0].value += 1;
-  pieChartData[1].value += 1;
-  pieChartData[2].value += 1;
-  pieChartData[3].value += 1;
-  if (totalData > 0) {
-    radarChartData[0].value = parseInt(radarChartData[0].value / totalData + 0.5);
-    radarChartData[1].value = parseInt(radarChartData[1].value / totalData + 0.5);
-    radarChartData[2].value = parseInt(radarChartData[2].value / totalData + 0.5);
-  }
   return (
     <div style={{
       textAlign: 'left'
@@ -331,28 +352,12 @@ function HomeScreen() {
       <div style={{
         height: height-164-800,
         width: width,
-        backgroundColor: '#222222',
+        backgroundColor: '#111111',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center'
       }}>
-        <h1 style={{margin: 0, marginBottom: 30, fontWeight: 'lighter'}}>${numberWithCommas(totalWorth)}</h1>
-        <div style={{display: 'flex', flexDirection: 'row'}}>
-          <PieChart width={460} height={250}>
-            <Pie stroke="none" data={pieChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={50} fill="#8884d8" label={entry => entry.name}>
-              <Cell fill="#75d8ff" />
-              <Cell fill="#ffd859" />
-              <Cell fill="#b06bff" />
-              <Cell fill="#666666" />
-            </Pie>
-          </PieChart>
-          <RadarChart outerRadius={90} width={460} height={250} data={radarChartData} style={{marginTop: 25}}>
-            <PolarGrid />
-            <PolarAngleAxis dataKey="type"/>
-            <PolarRadiusAxis style={{display: 'none'}} angle={120} domain={[0, 33]} />
-            <Radar name="Average ESG" dataKey="value" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
-          </RadarChart>
-        </div>
+        <h1 style={{margin: 0, marginBottom: 30, fontWeight: 'lighter', color: 'rgb(255, 204, 0)'}}>Total Assets: ${numberWithCommas(totalWorth)}</h1>
       </div>
       <Portfolio portfolio={portfolio} setPortfolio={setPortfolio} totalWorth={totalWorth} setTotalWorth={setTotalWorth} unprocessedCompanies={unprocessedCompanies} setUnprocessedCompanies={setUnprocessedCompanies}/>
     </div>
@@ -361,6 +366,8 @@ function HomeScreen() {
 
 function ExploreStock(props) {
   const [data, setData] = useState([]);
+  const [price, setPrice] = useState(0);
+  const [dayChange, setDayChange] = useState(0);
   useEffect(() => {
     if (data && data.length === 0) {
       let url = 'https://finnhub.io/api/v1/stock/candle?symbol=';
@@ -389,51 +396,46 @@ function ExploreStock(props) {
       url += '&to=';
       url += time;
       url += '&token=c5cau7aad3ib55bb0h20';
-      if (does_fetch)
+      if (does_fetch) {
         fetch(url).then(response => response.json()).then(data => {
           setData(data["c"].map(x => ({value: x})));
-          console.log(props.unprocessedCompanies);
           if (props.unprocessedCompanies && props.unprocessedCompanies.delete(props.symbol)) {
             props.setUnprocessedCompanies(props.unprocessedCompanies);
             props.setTotalWorth(props.totalWorth + data["c"][data["c"].length - 1] * props.numStocks);
           }
+          setPrice(data["c"][data["c"].length - 1]);
+          setDayChange(Math.round(data["c"][data["c"].length - 1] * 100 - data["c"][0] * 100) / 100);
         }).catch(error => console.error(error + "fetch error, please check if symbol is correct, but rate limit can also be passed"));
+      }
     }
   });
   const symbol = props.symbol;
   // 1W, 1M, 3M, 6M, 1Y
   // const time = props.time;
-  const color = data.length > 0 && data[0].value >= data[data.length - 1].value ? 'red' : 'green';
-  let chips = [];
-  if (props.env_v >= env_threshold)
-    chips.push("E");
-  if (props.soc_v >= soc_threshold)
-    chips.push("S");
-  if (props.gov_v >= gov_threshold)
-    chips.push("G");
+  const color = data.length > 0 && data[0].value >= data[data.length - 1].value ? '#ff2222' : 'lime';
   return (
     <>
       <Divider width="700"/>
-      <div style={{display: 'flex', marginBottom: 6, marginTop: 14, cursor: 'pointer'}} onClick={() => props.handleDetailView(symbol, props.name, props.env_v, props.soc_v, props.gov_v, props.numStocks)}>
-        <div style={{width: 60, display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-          <span style={{fontSize: 20, fontWeight: 'bold', color: setColor((props.env_v + props.soc_v + props.gov_v - 20))}}>{parseInt(props.env_v+props.soc_v+props.gov_v+0.5)}</span>
-          <span style={{fontSize: 16, color: '#aaaaaa'}}>ESG</span>
-        </div>
-        <div style={{width: 100, display: 'flex', flexDirection: 'column'}}>
+      <div style={{display: 'flex', marginBottom: 10, marginTop: 10, cursor: 'pointer'}} onClick={() => props.handleDetailView(symbol, props.name, props.relevance, props.numStocks)}>
+        <div style={{width: 140, marginLeft: 20, display: 'flex', flexDirection: 'column', alignSelf: 'center'}}>
           <motion.span layoutId={symbol + "_symbol"} style={{fontSize: 20, fontWeight: 'bold'}}>{symbol}</motion.span>
-          <motion.span layoutId={symbol + "_name"} style={{fontSize: 16, color: '#aaaaaa'}}>{props.name}</motion.span>
+          <motion.span layoutId={symbol + "_name"} style={{fontSize: 14, color: '#aaaaaa'}}>{props.name}</motion.span>
         </div>
         <motion.div layoutId={symbol + "_chart"}>
           {data.length > 0 ? (
-            <LineChart width={400} height={50} data={data}>
-              <YAxis style={{display: 'none'}} type="number" domain={['dataMin', 'dataMax']} />
+            <LineChart style={{marginLeft: 15, marginRight: 15}} width={props.searchTags.length > 0 ? 200 : 400} height={50} data={data}>
+              <YAxis style={{display: 'none'}} width={0} type="number" domain={['dataMin', 'dataMax']} />
               <Line type="monotone" dataKey="value" stroke={color} dot={false}/>
             </LineChart>
-          ) : <div style={{width: 400, height: 50}} />}
+          ) : <div style={{width: props.searchTags.length > 0 ? 230 : 430, height: 50}} />}
         </motion.div>
-        <div style={{width: 120, display: 'flex', flexDirection: 'row', marginRight: 16, marginLeft: 16, alignItems: 'center'}}>
-          {chips.map((value) => (
-            <Chip key={value} label={value} style={{marginBottom: 10, marginRight: 4, color: categoryColorMap[value], backgroundColor: categoryColorMap[value] + '30'}}/>
+        <div style={{marginLeft: 10, width: 80, display: 'flex', flexDirection: 'column'}}>
+          <motion.span style={{fontSize: 20, fontWeight: 'bold', textAlign: 'right'}}>{price.toFixed(2)}</motion.span>
+          <motion.span style={{fontSize: 18, borderRadius: 6, alignSelf: 'center', textAlign: 'right', width: '80%', padding: 4, borderWidth: 1, borderColor: dayChange >= 0 ? 'lime' : '#ff2222', borderStyle: 'solid', color: dayChange >= 0 ? 'lime' : '#ff2222', marginLeft: 8, marginTop: 4, marginBottom: 6}}>{dayChange >= 0 ? '+' : ''}{dayChange.toFixed(2)}</motion.span>
+        </div>
+        <div style={{width: 170, display: 'flex', flexDirection: 'row', marginRight: 16, marginLeft: 16, alignItems: 'center', justifyContent: 'flex-end'}}>
+          {props.searchTags.map(value => props.relevance[props.searchTags.indexOf(value)] !== undefined && (
+            <Chip key={value} label={props.relevance[props.searchTags.indexOf(value)] + "%"} style={{marginBottom: 10, marginRight: 4, color: getColor(value), backgroundColor: getColor(value) + '30'}}/>
           ))}
         </div>
 
@@ -453,7 +455,11 @@ function AddStock(props) {
         <TextField label="Symbol" value={symbol} onChange={event => setSymbol(event.target.value)}/>
         <TextField label="Amount" type="number" value={amount} onChange={event => setAmount(parseInt(event.target.value))}/>
         <Button variant="outlined" style={{height: 56, width: 200}} onClick={() => {
+          console.log("checking if symbol " + symbol + " exists");
+          console.log(companies);
+          console.log(companies[symbol]);
           if (companies[symbol] !== undefined) {
+            console.log("symbol does exist");
             props.setPortfolio(props.portfolio.concat([{symbol: symbol, amount: amount}]));
             props.unprocessedCompanies.add(symbol);
             props.setUnprocessedCompanies(props.unprocessedCompanies)
@@ -466,87 +472,94 @@ function AddStock(props) {
   )
 }
 
-function randomKey(object) {
-  var keys = Object.keys(object);
-  return keys[Math.floor(keys.length * Math.random())];
-}
-
 function ExploreScreen(props) {
   const {width} = useWindowDimensions();
   let [suggestions, setSuggestions] = useState([]);
   const [detailed, setDetailed] = useState("");
   const [name, setName] = useState("");
-  const [env_v, setEnv_v] = useState(-1);
-  const [soc_v, setSoc_v] = useState(-1);
-  const [gov_v, setGov_v] = useState(-1);
+  const [relevance, setRelevance] = useState(-1);
+  const [writtenPost, setWrittenPost] = useState("");
+  const [posts, setPosts] = useState([
+    ["I bought lots of GS shares this week! Everyone else should buy too 😉", "Marcus Goldman", new Date(2021, 10, 14, 6, 43, 26)],
+    ["Elon will dump his remaining shares, Rivian IPO will back track off its insane valuation, and Lucid earnings will elicit no less than a 10% retrace. We all know EV is a sympathy category and the combination of these factors sets up some solid put plays this week. Tesla puts are super pricey, and Rivian puts will be too, but Lucid puts in the $40 range are looking juicy!", "Jeff Bezos", new Date(2021, 10, 14, 7, 52, 31)],
+    ["The good news is demand hasn’t been destroyed. It’s been delayed. I think supply chain issues should get sorted out. Some components of CPI, like higher used car prices, show that the inflation should be temporary!", "Jake from State Farm", new Date(2021, 10, 14, 8, 30, 23)],
+    ["CommonWealth is a super neat app 🙂", "Temoc", new Date(2021, 10, 14, 9, 2, 33)]
+  ]);
   // props.searchTags;
   useEffect(() => {
-    let result = [];
-    let alreadyGood = new Set();
-    while (result.length < 10) {
-      let randSymb = randomKey(companies);
-      if (alreadyGood.has(randSymb))
-        continue;
-      alreadyGood.add(randSymb);
-      const env_v = companies[randSymb][1][1];
-      const soc_v = companies[randSymb][1][2];
-      const gov_v = companies[randSymb][1][3];
-      let good = true;
-      for (const i of props.searchTags) {
-        if (i === categories[0] && env_v < env_threshold)
-          good = false;
-        else if (i === categories[1] && soc_v < soc_threshold)
-          good = false;
-        else if (i === categories[2] && gov_v < gov_threshold)
-          good = false;
-      }
-      if (good)
-        result.push({symbol: randSymb, name: companies[randSymb][0], env_v: env_v,
-          soc_v: soc_v, gov_v: gov_v});
+    if (props.searchTags.length > 0) {
+      fetch("http://127.0.0.1:5000/get_random_query/" + props.searchTags).then(response => response.json()).then(data => {
+        let result = [];
+        for (let i in data)
+          result.push({symbol: data[i][0], name: companies[data[i][0]][0], relevance: data[i][1]});
+        setSuggestions(result);
+      });
+    } else {
+      setSuggestions([]);
     }
-    setSuggestions(result);
   }, [props.searchTags]);
 
-  /*
-  if (suggestions.length === 0)
-    setSuggestions([
-      {symbol: "AAPL", name: "Apple", env_v: 4, soc_v: 1, gov_v: 30},
-      {symbol: "SBUX", name: "Starbucks", env_v: 1, soc_v: 1, gov_v: 0},
-      {symbol: "NKE", name: "Nike", env_v: 1, soc_v: 0, gov_v: 1},
-      {symbol: "TMUS", name: "TMobile", env_v: 1, soc_v: 0, gov_v: 0},
-      {symbol: "DRIP", name: "Direxion", env_v: 0, soc_v: 1, gov_v: 1},
-      {symbol: "AMZN", name: "Amazon", env_v: 0, soc_v: 1, gov_v: 0},
-      {symbol: "FB", name: "Facebook", env_v: 0, soc_v: 0, gov_v: 1},
-      {symbol: "GOOGL", name: "Google", env_v: 0, soc_v: 0, gov_v: 0},
-      {symbol: "TSLA", name: "Tesla", env_v: 0, soc_v: 0, gov_v: 0},
-      {symbol: "MSC", name: "Music City", env_v: 0, soc_v: 0, gov_v: 0},
-    ]);
-    */
-
-  function handleDetailView(symbol, name, env_v, soc_v, gov_v, numStocks) {
+  function handleDetailView(symbol, name, relevance, numStocks) {
     setDetailed(symbol);
     setName(name);
-    setEnv_v(env_v);
-    setSoc_v(soc_v);
-    setGov_v(gov_v);
+    setRelevance(relevance);
   }
 
   return (
     <div style={{
-      paddingLeft: 340,
+      paddingLeft: 370,
       textAlign: 'left',
       color: '#eeeeee',
       display: 'flex',
       flexDirection: 'column',
-      backgroundColor: '#222222',
-      width: width - 340
+      backgroundColor: '#111111',
+      width: width - 370
     }}>
       <AnimateSharedLayout>
         {suggestions.map(suggestion => (
-          <ExploreStock key={suggestion.symbol} symbol={suggestion.symbol} name={suggestion.name} time={"1W"} env_v={suggestion.env_v} soc_v={suggestion.soc_v} gov_v={suggestion.gov_v} handleDetailView={handleDetailView} numStocks={-1}/>
+          <ExploreStock key={suggestion.symbol} symbol={suggestion.symbol} name={suggestion.name} time={"1W"} relevance={suggestion.relevance} handleDetailView={handleDetailView} numStocks={-1} searchTags={props.searchTags}/>
         ))}
+        {suggestions.length === 0 && (
+          <>
+            <span style={{fontWeight: 'bold', fontSize: 36, marginBottom: 10, color: 'rgb(255, 204, 0)', fontFamily: "Caviar Dreams"}}>Frequently Searched</span>
+            {["GS"].map(symbol => (
+              <ExploreStock key={symbol} symbol={symbol} name={companies[symbol][0]} time={"1W"} relevance={[]} handleDetailView={handleDetailView} numStocks={-1} searchTags={props.searchTags}/>
+            ))}
+            <Divider width="700"/>
+            <span style={{fontWeight: 'bold', fontSize: 36, marginBottom: 10, marginTop: 10, color: 'rgb(255, 204, 0)', fontFamily: "Caviar Dreams"}}>Most Active</span>
+            {["PSFE"].map(symbol => (
+              <ExploreStock key={symbol} symbol={symbol} name={companies[symbol][0]} time={"1W"} relevance={[]} handleDetailView={handleDetailView} numStocks={-1} searchTags={props.searchTags}/>
+            ))}
+            <Divider width="700"/>
+            <span style={{fontWeight: 'bold', fontSize: 36, marginBottom: 10, marginTop: 10, color: 'rgb(255, 204, 0)', fontFamily: "Caviar Dreams"}}>Trending Now</span>
+            {["TSLA"].map(symbol => (
+              <ExploreStock key={symbol} symbol={symbol} name={companies[symbol][0]} time={"1W"} relevance={[]} handleDetailView={handleDetailView} numStocks={-1} searchTags={props.searchTags}/>
+            ))}
+            <Divider width="700"/>
+            <div style={{maxWidth: 700, marginTop: 48, display: 'flex', flexDirection: 'column'}}>
+              <TextField multiline rows={4} maxRows={4} value={writtenPost} onChange={event => setWrittenPost(event.target.value)} label="Write Post" placeholder="Write a post to share with the world" fullWidth/>
+              <Button variant='outlined' style={{alignSelf: 'flex-start', marginTop: 10, marginBottom: 48}} onClick={() => {
+                setPosts(posts.concat([[writtenPost, author, new Date()]]));
+                setWrittenPost("");
+              }}>Post</Button>
+            </div>
+            <Divider width="700"/>
+            <div style={{display: 'flex', flexDirection: 'column'}}>
+              {posts.map(post => (
+                <>
+                  <div style={{display: 'flex', margin: 45, marginBottom: 10, color: '#cccccc', fontWeight: 'bold', fontFamily: 'Caviar Dreams', fontSize: 22}}>
+                    <span>{post[1]}</span>
+                    <span style={{marginLeft: 20, fontSize: 18, alignSelf: 'center', color: '#666666'}}>Today at {post[2].toLocaleTimeString()}</span>
+                  </div>
+                  <span style={{margin: 45, marginTop: 0, width: 610, fontFamily: 'Caviar Dreams'}}>{post[0]}</span>
+                  <Divider width="700"/>
+                </>
+              ))}
+            </div>
+          </>
+        )}
         <Backdrop showBackdrop={detailed !== ""} leaveDetailed={() => setDetailed("")}/>
-        {detailed !== "" && <DetailedView symbol={detailed} name={name} env_v={env_v} soc_v={soc_v} gov_v={gov_v}/>}
+        {detailed !== "" && <DetailedView symbol={detailed} name={name} relevance={relevance} numStocks={-1}/>}
       </AnimateSharedLayout>
     </div>
   );
@@ -613,7 +626,7 @@ function App() {
   const [searchTags, setSearchTags] = useState([]);
 
   return (
-    <div className="App" style={{backgroundColor: "#222222", position: 'absolute', width: '100%', height: height * 4}}>
+    <div className="App" style={{backgroundColor: "#111111", position: 'absolute', width: '100%', height: height * 20}}>
       <motion.header className="App-header" animate={state} onAnimationComplete={animationComplete}>
         <Header changeScreen={changeScreen} state={state} searchTags={searchTags} setSearchTags={setSearchTags}/>
         <motion.div style={{position: state === "atHome" ? 'block' : 'absolute', top: 164, zIndex: (
